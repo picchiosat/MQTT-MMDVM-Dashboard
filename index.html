@@ -24,7 +24,7 @@
         </svg>
         <div class="header-titles">
             <h1>MQTT MMDVM Dashboard</h1>
-            <h2>MultiRepeater traffic in real time</h2>
+            <h2>Multi Repeater traffic in real time</h2>
         </div>
     </header>
 
@@ -37,6 +37,27 @@
             <button class="filter-btn" data-mode="d-star">D-STAR</button>
         </div>
 
+
+        <div class="filters dropdown-filters">
+            <select id="node-filter">
+                <option value="all">NODO: ALL</option>
+            </select>
+            <select id="tg-filter">
+                <option value="all">TG: ALL</option>
+            </select>
+            <select id="name-filter">
+                <option value="all">NAME: ALL</option>
+            </select>
+        </div>
+
+        <div class="monitor-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">Live Nodes Monitor</h3>
+        </div>
+        <div id="nodes-status-container" class="nodes-grid"></div>
+
+        <div class="table-header" style="margin-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">Calls History</h3>
+        </div>
 
         <div class="table-container">
             <table>
@@ -77,6 +98,9 @@
         }
 
         let currentMode = "all";
+        let currentNode = "all";
+        let currentTG = "all";
+        let currentName = "all";
 
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -87,82 +111,204 @@
             });
         });
 
+        // Event listeners per le nuove dropdown
+        document.getElementById('node-filter').addEventListener('change', (e) => {
+            currentNode = e.target.value;
+            loadData();
+        });
+        document.getElementById('tg-filter').addEventListener('change', (e) => {
+            currentTG = e.target.value;
+            loadData();
+        });
+        document.getElementById('name-filter').addEventListener('change', (e) => {
+            currentName = e.target.value;
+            loadData();
+        });
+
+        function updateDropdown(id, values, currentVal, label) {
+            const select = document.getElementById(id);
+            const sortedValues = Array.from(values).sort();
+            
+            // Crea una stringa con i nuovi valori per il confronto
+            const snapshot = sortedValues.join('|');
+            if (select.dataset.snapshot === snapshot) return;
+            select.dataset.snapshot = snapshot;
+            
+            // Ricostruisci il menu mantenendo la selezione se valida
+            select.innerHTML = `<option value="all">${label}: ALL</option>`;
+            
+            sortedValues.forEach(val => {
+                if (val) {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = val;
+                    if (val === currentVal) opt.selected = true;
+                    select.appendChild(opt);
+                }
+            });
+        }
+
         async function loadData() {
             try {
                 const res = await fetch('/data');
                 const response = await res.json();
-                const data = response.calls;
+                const data = response.calls.reverse(); // Più recenti all'inizio
                 const serverTime = response.server_time;
                 const localTime = Date.now() / 1000;
                 const serverOffset = serverTime - localTime;
 
+                const escapeHtml = (unsafe) => {
+                    return (unsafe || "").toString()
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                };
+
+                // Estrai valori unici per le dropdown
+                const nodes = new Set();
+                const tgs = new Set();
+                const names = new Set();
+                
+                data.forEach(call => {
+                    if (call.NODO) nodes.add(call.NODO.toUpperCase());
+                    if (call.TG) tgs.add(call.TG);
+                    if (call.NAME) names.add(call.NAME);
+                });
+
+                updateDropdown('node-filter', nodes, currentNode, 'NODO');
+                updateDropdown('tg-filter', tgs, currentTG, 'TG');
+                updateDropdown('name-filter', names, currentName, 'NAME');
+
+                // Aggiorna il monitor dei nodi live
+                const nodesStatusContainer = document.getElementById("nodes-status-container");
+                const nodesMap = new Map();
+                
+                // Raccogli l'ultimo stato per ogni nodo
+                data.forEach(call => {
+                    const nodeName = (call.NODO || "N/A").toUpperCase();
+                    if (!nodesMap.has(nodeName)) {
+                        nodesMap.set(nodeName, call);
+                    }
+                });
+
+                // Cancella e ricostruisci il monitor dei nodi
+                nodesStatusContainer.innerHTML = "";
+                
+                // Ordina i nodi alfabeticamente
+                const sortedNodes = Array.from(nodesMap.keys()).sort();
+                
+                sortedNodes.forEach(nodeName => {
+                    const lastCall = nodesMap.get(nodeName);
+                    const isTX = lastCall.TIME === "";
+                    
+                    const card = document.createElement("div");
+                    card.className = `node-card ${isTX ? 'tx' : ''}`;
+                    
+                    // Calcolo durata live se in TX
+                    let displayDuration = "";
+                    if (isTX && lastCall.start_ts) {
+                        const currentServerTime = (Date.now() / 1000) + serverOffset;
+                        let diff = Math.floor(currentServerTime - lastCall.start_ts);
+                        if (diff < 0) diff = 0;
+                        displayDuration = diff + "s";
+                    } else {
+                        displayDuration = lastCall.TIME ? lastCall.TIME + "s" : "-";
+                        if (displayDuration.includes("!")) displayDuration = displayDuration.replace("!", "") + "!";
+                    }
+
+                    card.innerHTML = `
+                        <div class="node-header">
+                            <span class="node-name">${escapeHtml(nodeName)}</span>
+                            <span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}">${isTX ? 'Transmitting' : 'Idle'}</span>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-info-row">
+                                <span class="node-label">Operator:</span>
+                                <span class="node-value callsign">${escapeHtml(lastCall.ID)}</span>
+                            </div>
+                            <div class="node-info-row">
+                                <span class="node-label">Name:</span>
+                                <span class="node-value">${escapeHtml(lastCall.NAME)}</span>
+                            </div>
+                            <div class="node-info-row">
+                                <span class="node-label">Target:</span>
+                                <span class="node-value">${escapeHtml(lastCall.TG)}</span>
+                            </div>
+                            <div class="node-info-row">
+                                <span class="node-label">Mode:</span>
+                                <span class="node-value">${escapeHtml(lastCall.MODE)}</span>
+                            </div>
+                        </div>
+                        <div class="node-timer">${displayDuration}</div>
+                    `;
+                    nodesStatusContainer.appendChild(card);
+                });
+
                 const tbody = document.getElementById("table-body");
                 tbody.innerHTML = "";
 
-                data.reverse().forEach(call => {
+                data.forEach(call => {
+                    // Filtri combinati
+                    const modeMatch = currentMode === "all" || call.MODE.toLowerCase() === currentMode;
+                    const nodeMatch = currentNode === "all" || (call.NODO && call.NODO.toUpperCase() === currentNode);
+                    const tgMatch = currentTG === "all" || call.TG === currentTG;
+                    const nameMatch = currentName === "all" || call.NAME === currentName;
 
-                    let row = document.createElement("tr");
+                    if (modeMatch && nodeMatch && tgMatch && nameMatch) {
+                        let row = document.createElement("tr");
 
-                    // evidenzia chiamata attiva
-                    if (call.TIME === "") {
-                        row.classList.add("active");
-                    }
-
-                    let fromClass = call.FROM === "RF" ? "badge rf" : "badge netw";
-                    let slotClass = call.SLOT === "1" ? "badge slot1" : "badge slot2";
-
-                    const escapeHtml = (unsafe) => {
-                        return (unsafe || "").toString()
-                            .replace(/&/g, "&amp;")
-                            .replace(/</g, "&lt;")
-                            .replace(/>/g, "&gt;")
-                            .replace(/"/g, "&quot;")
-                            .replace(/'/g, "&#039;");
-                    };
-
-                    let modeClass = call.MODE ? ("badge mode-" + escapeHtml(call.MODE).toLowerCase()) : "";
-
-                    let berValue = parseFloat(call.BER.replace('%', '')) || 0;
-                    let berClass = "ber-cell";
-                    if (berValue < 1) berClass += " ber-low";
-                    else if (berValue <= 3) berClass += " ber-mid";
-                    else berClass += " ber-high";
-
-                    let displayTime = call.TIME.toString();
-                    if (displayTime === "" && call.start_ts) {
-                        const currentServerTime = (Date.now() / 1000) + serverOffset;
-                        let diff = Math.floor(currentServerTime - call.start_ts);
-                        if (diff < 0) diff = 0; // Fix negative timer during live tx
-                        displayTime = diff.toString();
-                    } else if (displayTime !== "" && !displayTime.includes("!")) {
-                        // Fix negative timer if it comes from the backend as a completed tx
-                        let dur = parseFloat(displayTime);
-                        if (!isNaN(dur) && dur < 0) displayTime = "0";
-                    }
-
-                    if (displayTime !== "") {
-                        if (displayTime.includes("!")) {
-                            displayTime = displayTime.replace("!", "") + "s!";
-                        } else {
-                            displayTime += "s";
+                        // evidenzia chiamata attiva
+                        if (call.TIME === "") {
+                            row.classList.add("active");
                         }
-                    }
 
-                    row.innerHTML = `
-                <td><span class="${fromClass}">${escapeHtml(call.FROM)}</span></td>
-                <td><span class="${modeClass}">${escapeHtml(call.MODE || "DMR")}</span></td>
-                <td class="id-cell">${escapeHtml(call.ID)}</td>
-                <td class="name-cell">${escapeHtml(call.NAME)}</td>
-                <td class="tg">${escapeHtml(call.TG)}</td>
-                <td class="nodo-cell">${escapeHtml(call.NODO).toUpperCase()}</td>
-                <td class="${berClass}">${escapeHtml(call.BER)}</td>
-                <td>${escapeHtml(call.DATA)}</td>
-                <td>${escapeHtml(call.ORARIO)}</td>
-                <td><span class="${slotClass}">TS ${escapeHtml(call.SLOT)}</span></td>
-                <td class="time-cell">${displayTime}</td>
-            `;
+                        let fromClass = call.FROM === "RF" ? "badge rf" : "badge netw";
+                        let slotClass = call.SLOT === "1" ? "badge slot1" : "badge slot2";
 
-                    if (currentMode === "all" || call.MODE.toLowerCase() === currentMode) {
+                        let modeClass = call.MODE ? ("badge mode-" + escapeHtml(call.MODE).toLowerCase()) : "";
+
+                        let berValue = parseFloat(call.BER.replace('%', '')) || 0;
+                        let berClass = "ber-cell";
+                        if (berValue < 1) berClass += " ber-low";
+                        else if (berValue <= 3) berClass += " ber-mid";
+                        else berClass += " ber-high";
+
+                        let displayTime = call.TIME.toString();
+                        if (displayTime === "" && call.start_ts) {
+                            const currentServerTime = (Date.now() / 1000) + serverOffset;
+                            let diff = Math.floor(currentServerTime - call.start_ts);
+                            if (diff < 0) diff = 0; // Fix negative timer during live tx
+                            displayTime = diff.toString();
+                        } else if (displayTime !== "" && !displayTime.includes("!")) {
+                            // Fix negative timer if it comes from the backend as a completed tx
+                            let dur = parseFloat(displayTime);
+                            if (!isNaN(dur) && dur < 0) displayTime = "0";
+                        }
+
+                        if (displayTime !== "") {
+                            if (displayTime.includes("!")) {
+                                displayTime = displayTime.replace("!", "") + "s!";
+                            } else {
+                                displayTime += "s";
+                            }
+                        }
+
+                        row.innerHTML = `
+                    <td><span class="${fromClass}">${escapeHtml(call.FROM)}</span></td>
+                    <td><span class="${modeClass}">${escapeHtml(call.MODE || "DMR")}</span></td>
+                    <td class="id-cell">${escapeHtml(call.ID)}</td>
+                    <td class="name-cell">${escapeHtml(call.NAME)}</td>
+                    <td class="tg">${escapeHtml(call.TG)}</td>
+                    <td class="nodo-cell">${escapeHtml(call.NODO).toUpperCase()}</td>
+                    <td class="${berClass}">${escapeHtml(call.BER)}</td>
+                    <td>${escapeHtml(call.DATA)}</td>
+                    <td>${escapeHtml(call.ORARIO)}</td>
+                    <td><span class="${slotClass}">TS ${escapeHtml(call.SLOT)}</span></td>
+                    <td class="time-cell">${displayTime}</td>
+                `;
+
                         tbody.appendChild(row);
                     }
                 });
