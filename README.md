@@ -6,6 +6,6 @@ Currently, the entire logging system is managed via the MQTT protocol, so a "bro
 
 Topics must be in the format mmdvm/<node-name> for MMDVMHost.ini
 
-For <MODE>Gateway.ini, the topic format must be: <mode>-gateway/<nodename>
+For [MODE]Gateway.ini, the topic format must be: [mode]-gateway/<nodename>
 
 You can find an example here: http://mqtt.freedmr.it:7000
