@@ -139,12 +139,30 @@
         let currentTG = "all";
         let currentName = "all";
         let modeChart, tgChart, map, marker;
+        let lastServerOffset = 0;
+        let activeTimers = []; // [{start_ts, nodeTimerEl, rowTimerEl}]
 
         const countryCoords = {
             "Italy": [41.9, 12.5], "Germany": [51.1, 10.4], "France": [46.2, 2.2],
             "United Kingdom": [55.3, -3.4], "Spain": [40.4, -3.7], "USA": [37.0, -95.7],
             "United States": [37.0, -95.7], "Switzerland": [46.8, 8.2], "Austria": [47.5, 14.5],
             "Netherlands": [52.1, 5.2], "Belgium": [50.5, 4.4], "Canada": [56.1, -106.3]
+        };
+
+        const escapeHtml = (unsafe) => {
+            return (unsafe || "").toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+
+        const getBerClass = (berStr) => {
+            let berValue = parseFloat((berStr || "0%").replace('%', '')) || 0;
+            if (berValue < 1) return "ber-low";
+            if (berValue <= 3) return "ber-mid";
+            return "ber-high";
         };
 
         function initMap() {
@@ -293,84 +311,22 @@
             });
         }
 
-        async function loadData() {
-            try {
-                const res = await fetch('/data');
-                const response = await res.json();
-                const data = response.calls.reverse(); // Più recenti all'inizio
-                const serverTime = response.server_time;
-                const localTime = Date.now() / 1000;
-                const serverOffset = serverTime - localTime;
+        // Genera l'HTML di una node card (senza durata live, che viene aggiornata dal timer)
+        function buildNodeCardHtml(nodeName, lastCall, serverOffset) {
+            const isTX = lastCall.TIME === "";
 
-                const escapeHtml = (unsafe) => {
-                    return (unsafe || "").toString()
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#039;");
-                };
+            let displayDuration = "";
+            if (isTX && lastCall.start_ts) {
+                const currentServerTime = (Date.now() / 1000) + serverOffset;
+                let diff = Math.floor(currentServerTime - lastCall.start_ts);
+                if (diff < 0) diff = 0;
+                displayDuration = diff + "s";
+            } else {
+                displayDuration = lastCall.TIME ? lastCall.TIME + "s" : "-";
+                if (displayDuration.includes("!")) displayDuration = displayDuration.replace("!", "") + "!";
+            }
 
-                const getBerClass = (berStr) => {
-                    let berValue = parseFloat((berStr || "0%").replace('%', '')) || 0;
-                    if (berValue < 1) return "ber-low";
-                    if (berValue <= 3) return "ber-mid";
-                    return "ber-high";
-                };
-
-                // Estrai valori unici per le dropdown
-                const nodes = new Set();
-                const tgs = new Set();
-                const names = new Set();
-
-                data.forEach(call => {
-                    if (call.NODO) nodes.add(call.NODO.toUpperCase());
-                    if (call.TG) tgs.add(call.TG);
-                    if (call.NAME) names.add(call.NAME);
-                });
-
-                updateDropdown('node-filter', nodes, currentNode, 'NODO');
-                updateDropdown('tg-filter', tgs, currentTG, 'TG');
-                updateDropdown('name-filter', names, currentName, 'NAME');
-
-                // Aggiorna il monitor dei nodi live
-                const nodesStatusContainer = document.getElementById("nodes-status-container");
-                const nodesMap = new Map();
-
-                // Raccogli l'ultimo stato per ogni nodo
-                data.forEach(call => {
-                    const nodeName = (call.NODO || "N/A").toUpperCase();
-                    if (!nodesMap.has(nodeName)) {
-                        nodesMap.set(nodeName, call);
-                    }
-                });
-
-                // Cancella e ricostruisci il monitor dei nodi
-                nodesStatusContainer.innerHTML = "";
-
-                // Ordina i nodi alfabeticamente
-                const sortedNodes = Array.from(nodesMap.keys()).sort();
-
-                sortedNodes.forEach(nodeName => {
-                    const lastCall = nodesMap.get(nodeName);
-                    const isTX = lastCall.TIME === "";
-
-                    const card = document.createElement("div");
-                    card.className = `node-card ${isTX ? 'tx' : ''}`;
-
-                    // Calcolo durata live se in TX
-                    let displayDuration = "";
-                    if (isTX && lastCall.start_ts) {
-                        const currentServerTime = (Date.now() / 1000) + serverOffset;
-                        let diff = Math.floor(currentServerTime - lastCall.start_ts);
-                        if (diff < 0) diff = 0;
-                        displayDuration = diff + "s";
-                    } else {
-                        displayDuration = lastCall.TIME ? lastCall.TIME + "s" : "-";
-                        if (displayDuration.includes("!")) displayDuration = displayDuration.replace("!", "") + "!";
-                    }
-
-                    card.innerHTML = `
+            return `<div class="node-card ${isTX ? 'tx' : ''}">
                         <div class="node-header">
                             <span class="node-name">${escapeHtml(nodeName)}</span>
                             <span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}">${isTX ? 'Transmitting' : 'Idle'}</span>
@@ -397,10 +353,141 @@
                                 <span class="node-value ber-value ${getBerClass(lastCall.BER)}">${escapeHtml(lastCall.BER)}</span>
                             </div>
                         </div>
-                        <div class="node-timer">${displayDuration}</div>
-                    `;
-                    nodesStatusContainer.appendChild(card);
+                        <div class="node-timer" ${isTX ? 'data-start-ts="' + lastCall.start_ts + '"' : ''}>${displayDuration}</div>
+                    </div>`;
+        }
+
+        // Genera l'HTML di una riga della tabella
+        function buildRowHtml(call, serverOffset) {
+            const isTX = call.TIME === "";
+            let rowClass = "";
+            if (isTX) rowClass += " active";
+            let isNew = (Date.now() / 1000) - call.start_ts < 3;
+            if (isNew) rowClass += " new-row";
+
+            let fromClass = call.FROM === "RF" ? "badge rf" : "badge netw";
+            let slotClass = call.SLOT === "1" ? "badge slot1" : "badge slot2";
+            let modeClass = call.MODE ? ("badge mode-" + escapeHtml(call.MODE).toLowerCase()) : "";
+            let berClass = "ber-cell " + getBerClass(call.BER);
+
+            let displayTime = call.TIME.toString();
+            if (displayTime === "" && call.start_ts) {
+                const currentServerTime = (Date.now() / 1000) + serverOffset;
+                let diff = Math.floor(currentServerTime - call.start_ts);
+                if (diff < 0) diff = 0;
+                displayTime = diff.toString();
+            } else if (displayTime !== "" && !displayTime.includes("!")) {
+                let dur = parseFloat(displayTime);
+                if (!isNaN(dur) && dur < 0) displayTime = "0";
+            }
+
+            if (displayTime !== "") {
+                if (displayTime.includes("!")) {
+                    displayTime = displayTime.replace("!", "") + "s!";
+                } else {
+                    displayTime += "s";
+                }
+            }
+
+            const isNumericId = /^\d+$/.test(call.ID);
+            const extSuffix = (call.MODE && call.MODE.toUpperCase() === 'D-STAR' && call.SOURCE_EXT) ? ` <span style="color: #14b8a6; font-size: 11px; font-weight: 700;">${escapeHtml(call.SOURCE_EXT)}</span>` : '';
+            const idContent = isNumericId ?
+                escapeHtml(call.ID) + extSuffix :
+                `<a href="https://www.qrz.com/db/${escapeHtml(call.ID)}" target="_blank" rel="noopener noreferrer" class="qrz-link">${escapeHtml(call.ID)}</a>${extSuffix}`;
+
+            let locationStr = (call.CITY && call.COUNTRY) ? `${call.CITY}, ${call.COUNTRY}` : (call.COUNTRY || "");
+            let locationLink = locationStr ? `https://www.google.com/maps/search/${encodeURIComponent(locationStr)}` : "#";
+
+            const startTsAttr = isTX ? ` data-start-ts="${call.start_ts}"` : '';
+
+            return `<tr class="${rowClass.trim()}"${startTsAttr}>
+                    <td><span class="${fromClass}">${escapeHtml(call.FROM)}</span></td>
+                    <td><span class="${modeClass}">${escapeHtml(call.MODE || "DMR")}</span></td>
+                    <td class="id-cell">${idContent}</td>
+                    <td class="name-cell">
+                        <div style="font-weight: 600;">${escapeHtml(call.NAME)}</div>
+                        <div style="font-size: 10px; color: var(--text-secondary);">
+                            <a href="${locationLink}" target="_blank" style="color: inherit; text-decoration: none;">📍 ${escapeHtml(locationStr)}</a>
+                        </div>
+                    </td>
+                    <td class="tg">${escapeHtml(call.TG)}</td>
+                    <td class="nodo-cell">${escapeHtml(call.NODO).toUpperCase()}</td>
+                    <td class="${berClass}">${escapeHtml(call.BER)}</td>
+                    <td>${escapeHtml(call.DATA)}</td>
+                    <td>${escapeHtml(call.ORARIO)}</td>
+                    <td><span class="${slotClass}">TS ${escapeHtml(call.SLOT)}</span></td>
+                    <td class="time-cell">${displayTime}</td>
+                </tr>`;
+        }
+
+        // Snapshot dei dati per confronto (esclude i timer live)
+        let lastDataSnapshot = "";
+
+        async function loadData() {
+            try {
+                const res = await fetch('/data');
+                const response = await res.json();
+                const data = response.calls; // Già ordinati dal backend (più recenti prima)
+                const serverTime = response.server_time;
+                const localTime = Date.now() / 1000;
+                lastServerOffset = serverTime - localTime;
+
+                // Crea uno snapshot per confronto (senza timer live)
+                const dataSnapshot = JSON.stringify(data);
+                const dataChanged = dataSnapshot !== lastDataSnapshot;
+                lastDataSnapshot = dataSnapshot;
+
+                // Estrai valori unici per le dropdown
+                const nodes = new Set();
+                const tgs = new Set();
+                const names = new Set();
+
+                data.forEach(call => {
+                    if (call.NODO) nodes.add(call.NODO.toUpperCase());
+                    if (call.TG) tgs.add(call.TG);
+                    if (call.NAME) names.add(call.NAME);
                 });
+
+                updateDropdown('node-filter', nodes, currentNode, 'NODO');
+                updateDropdown('tg-filter', tgs, currentTG, 'TG');
+                updateDropdown('name-filter', names, currentName, 'NAME');
+
+                // Aggiorna DOM solo se i dati sono cambiati
+                if (dataChanged) {
+                    // Aggiorna il monitor dei nodi live
+                    const nodesStatusContainer = document.getElementById("nodes-status-container");
+                    const nodesMap = new Map();
+
+                    data.forEach(call => {
+                        const nodeName = (call.NODO || "N/A").toUpperCase();
+                        if (!nodesMap.has(nodeName)) {
+                            nodesMap.set(nodeName, call);
+                        }
+                    });
+
+                    const sortedNodes = Array.from(nodesMap.keys()).sort();
+                    let nodesHtml = "";
+                    sortedNodes.forEach(nodeName => {
+                        nodesHtml += buildNodeCardHtml(nodeName, nodesMap.get(nodeName), lastServerOffset);
+                    });
+                    nodesStatusContainer.innerHTML = nodesHtml;
+
+                    // Aggiorna tabella
+                    const tbody = document.getElementById("table-body");
+                    let tableHtml = "";
+
+                    data.forEach(call => {
+                        const modeMatch = currentMode === "all" || call.MODE.toLowerCase() === currentMode;
+                        const nodeMatch = currentNode === "all" || (call.NODO && call.NODO.toUpperCase() === currentNode);
+                        const tgMatch = currentTG === "all" || call.TG === currentTG;
+                        const nameMatch = currentName === "all" || call.NAME === currentName;
+
+                        if (modeMatch && nodeMatch && tgMatch && nameMatch) {
+                            tableHtml += buildRowHtml(call, lastServerOffset);
+                        }
+                    });
+                    tbody.innerHTML = tableHtml;
+                }
 
                 // Update Map with latest live call
                 const lastActiveCall = data.find(c => c.TIME === "");
@@ -422,97 +509,41 @@
                 }
 
                 if (tgChart) {
-                    // Prendi i primi 5 TG
                     const sortedTGs = Object.entries(tgCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
                     tgChart.data.labels = sortedTGs.map(t => t[0]);
                     tgChart.data.datasets[0].data = sortedTGs.map(t => t[1]);
                     tgChart.update('none');
                 }
 
-                const tbody = document.getElementById("table-body");
-                tbody.innerHTML = "";
-
-                data.forEach(call => {
-                    // Filtri combinati
-                    const modeMatch = currentMode === "all" || call.MODE.toLowerCase() === currentMode;
-                    const nodeMatch = currentNode === "all" || (call.NODO && call.NODO.toUpperCase() === currentNode);
-                    const tgMatch = currentTG === "all" || call.TG === currentTG;
-                    const nameMatch = currentName === "all" || call.NAME === currentName;
-
-                    if (modeMatch && nodeMatch && tgMatch && nameMatch) {
-                        let row = document.createElement("tr");
-
-                        // evidenzia chiamata attiva
-                        if (call.TIME === "") {
-                            row.classList.add("active");
-                        }
-                        let isNew = (Date.now() / 1000) - call.start_ts < 3;
-                        if (isNew) row.classList.add("new-row");
-
-                        let fromClass = call.FROM === "RF" ? "badge rf" : "badge netw";
-                        let slotClass = call.SLOT === "1" ? "badge slot1" : "badge slot2";
-
-                        let modeClass = call.MODE ? ("badge mode-" + escapeHtml(call.MODE).toLowerCase()) : "";
-
-                        let berClass = "ber-cell " + getBerClass(call.BER);
-
-                        let displayTime = call.TIME.toString();
-                        if (displayTime === "" && call.start_ts) {
-                            const currentServerTime = (Date.now() / 1000) + serverOffset;
-                            let diff = Math.floor(currentServerTime - call.start_ts);
-                            if (diff < 0) diff = 0;
-                            displayTime = diff.toString();
-                        } else if (displayTime !== "" && !displayTime.includes("!")) {
-
-                            let dur = parseFloat(displayTime);
-                            if (!isNaN(dur) && dur < 0) displayTime = "0";
-                        }
-
-                        if (displayTime !== "") {
-                            if (displayTime.includes("!")) {
-                                displayTime = displayTime.replace("!", "") + "s!";
-                            } else {
-                                displayTime += "s";
-                            }
-                        }
-
-                        const isNumericId = /^\d+$/.test(call.ID);
-                        const extSuffix = (call.MODE && call.MODE.toUpperCase() === 'D-STAR' && call.SOURCE_EXT) ? ` <span style="color: #14b8a6; font-size: 11px; font-weight: 700;">${escapeHtml(call.SOURCE_EXT)}</span>` : '';
-                        const idContent = isNumericId ?
-                            escapeHtml(call.ID) + extSuffix :
-                            `<a href="https://www.qrz.com/db/${escapeHtml(call.ID)}" target="_blank" rel="noopener noreferrer" class="qrz-link">${escapeHtml(call.ID)}</a>${extSuffix}`;
-
-                        let locationStr = (call.CITY && call.COUNTRY) ? `${call.CITY}, ${call.COUNTRY}` : (call.COUNTRY || "");
-                        let locationLink = locationStr ? `https://www.google.com/maps/search/${encodeURIComponent(locationStr)}` : "#";
-
-                        row.innerHTML = `
-                    <td><span class="${fromClass}">${escapeHtml(call.FROM)}</span></td>
-                    <td><span class="${modeClass}">${escapeHtml(call.MODE || "DMR")}</span></td>
-                    <td class="id-cell">${idContent}</td>
-                    <td class="name-cell">
-                        <div style="font-weight: 600;">${escapeHtml(call.NAME)}</div>
-                        <div style="font-size: 10px; color: var(--text-secondary);">
-                            <a href="${locationLink}" target="_blank" style="color: inherit; text-decoration: none;">📍 ${escapeHtml(locationStr)}</a>
-                        </div>
-                    </td>
-                    <td class="tg">${escapeHtml(call.TG)}</td>
-                    <td class="nodo-cell">${escapeHtml(call.NODO).toUpperCase()}</td>
-                    <td class="${berClass}">${escapeHtml(call.BER)}</td>
-                    <td>${escapeHtml(call.DATA)}</td>
-                    <td>${escapeHtml(call.ORARIO)}</td>
-                    <td><span class="${slotClass}">TS ${escapeHtml(call.SLOT)}</span></td>
-                    <td class="time-cell">${displayTime}</td>
-                `;
-
-                        tbody.appendChild(row);
-                    }
-                });
             } catch (error) {
                 console.error("Errore nel caricamento dei dati:", error);
             }
         }
 
+        // Timer leggero per aggiornare solo i contatori delle chiamate attive
+        function updateLiveTimers() {
+            const now = (Date.now() / 1000) + lastServerOffset;
+
+            // Aggiorna timer nelle node card attive
+            document.querySelectorAll('.node-card.tx .node-timer[data-start-ts]').forEach(el => {
+                const startTs = parseFloat(el.dataset.startTs);
+                let diff = Math.floor(now - startTs);
+                if (diff < 0) diff = 0;
+                el.textContent = diff + "s";
+            });
+
+            // Aggiorna timer nelle righe attive della tabella
+            document.querySelectorAll('tr.active[data-start-ts]').forEach(row => {
+                const startTs = parseFloat(row.dataset.startTs);
+                let diff = Math.floor(now - startTs);
+                if (diff < 0) diff = 0;
+                const timeCell = row.querySelector('.time-cell');
+                if (timeCell) timeCell.textContent = diff + "s";
+            });
+        }
+
         setInterval(loadData, 1000);
+        setInterval(updateLiveTimers, 1000);
         loadData();
     </script>
 
