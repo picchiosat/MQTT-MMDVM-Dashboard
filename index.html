@@ -166,6 +166,34 @@
             "Mexico": [23.6, -102.5], "South Africa": [-30.5, 22.9]
         };
 
+        const cityCoords = {
+            "Trieste": [45.6495, 13.7768], "Milano": [45.4642, 9.1900], "Milan": [45.4642, 9.1900],
+            "Roma": [41.9028, 12.4964], "Rome": [41.9028, 12.4964], "Napoli": [40.8518, 14.2681],
+            "Naples": [40.8518, 14.2681], "Torino": [45.0703, 7.6869], "Turin": [45.0703, 7.6869],
+            "Palermo": [38.1157, 13.3615], "Genova": [44.4056, 8.9463], "Genoa": [44.4056, 8.9463],
+            "Bologna": [44.4949, 11.3426], "Firenze": [43.7696, 11.2558], "Florence": [43.7696, 11.2558],
+            "Bari": [41.1171, 16.8719], "Catania": [37.5079, 15.0830], "Venezia": [45.4408, 12.3155],
+            "Venice": [45.4408, 12.3155], "Verona": [45.4384, 10.9916], "Messina": [38.1938, 15.5540],
+            "Padova": [45.4064, 11.8768], "Padua": [45.4064, 11.8768], "Trieste": [45.6495, 13.7768],
+            "Cagliari": [39.2238, 9.1217], "Parma": [44.8015, 10.3279], "Prato": [43.8777, 11.1022],
+            "Modena": [44.6471, 10.9252], "Reggio di Calabria": [38.1144, 15.6500], "Reggio Calabria": [38.1144, 15.6500],
+            "Reggio nell'Emilia": [44.6982, 10.6312], "Reggio Emilia": [44.6982, 10.6312], "Perugia": [43.1107, 12.3908],
+            "Livorno": [43.5485, 10.3106], "Ravenna": [44.4183, 12.2035], "Foggia": [41.4622, 15.5446],
+            "Rimini": [44.0575, 12.5653], "Ferrara": [44.8381, 11.6198], "Salerno": [40.6779, 14.7659],
+            "Sassari": [40.7259, 8.5556], "Latina": [41.4676, 12.9036], "Monza": [45.5845, 9.2744],
+            "Siracusa": [37.0755, 15.2866], "Pescara": [42.4618, 14.2142], "Bergamo": [45.6983, 9.6773],
+            "Forlì": [44.2227, 12.0409], "Trento": [46.0679, 11.1211], "Vicenza": [45.5479, 11.5467],
+            "Terni": [42.5641, 12.6414], "Bolzano": [46.4981, 11.3548], "Novara": [45.4468, 8.6213],
+            "Piacenza": [45.0526, 9.6930], "Ancona": [43.6158, 13.5189], "Andria": [41.2319, 16.2988],
+            "Arezzo": [43.4631, 11.8781], "Udine": [46.0611, 13.2357], "Cesena": [44.1391, 12.2431],
+            "Lecce": [40.3515, 18.1750], "La Spezia": [44.1107, 9.8436], "Alessandria": [44.9129, 8.6154],
+            "Barletta": [41.3184, 16.2766], "Pistoia": [43.9333, 10.9167], "Guidonia Montecelio": [41.9961, 12.7265],
+            "Pisa": [43.7167, 10.4000], "Catanzaro": [38.9058, 16.5944], "Treviso": [45.6667, 12.2450],
+            "Lucca": [43.8417, 10.5028], "Varese": [45.8167, 8.8167], "Asti": [44.9000, 8.2069],
+            "Caserta": [41.0667, 14.3333], "Pavia": [45.1833, 9.1500], "Grosseto": [42.7667, 11.1167],
+            "Roseto degli Abruzzi": [42.6667, 14.0167], "Pineto": [42.6167, 14.0667], "Turriaco": [45.8167, 13.4333]
+        };
+
         const escapeHtml = (unsafe) => {
             return (unsafe || "").toString()
                 .replace(/&/g, "&amp;")
@@ -217,13 +245,28 @@
             markersLayer.clearLayers();
 
             uniqueCalls.forEach((call, id) => {
-                const coords = countryCoords[call.COUNTRY];
-                if (!coords) return;
+                const countryCenter = countryCoords[call.COUNTRY];
+                if (!countryCenter) return;
 
-                // Aggiungi un piccolo jitter se ci sono più utenti nello stesso paese
-                const jitter = 0.4;
-                const lat = coords[0] + (Math.seededRandom(id + "lat") - 0.5) * jitter;
-                const lng = coords[1] + (Math.seededRandom(id + "lng") - 0.5) * jitter;
+                let lat, lng;
+                const jitterSeed = id + (call.CITY || "");
+
+                if (call.LAT && call.LON) {
+                    // Coordinate precise da MQTT
+                    lat = parseFloat(call.LAT);
+                    lng = parseFloat(call.LON);
+                } else if (call.CITY && cityCoords[call.CITY]) {
+                    // Coordinate da città (con jitter minimo)
+                    const coords = cityCoords[call.CITY];
+                    const jitter = 0.05;
+                    lat = coords[0] + (Math.seededRandom(jitterSeed + "lat") - 0.5) * jitter;
+                    lng = coords[1] + (Math.seededRandom(jitterSeed + "lng") - 0.5) * jitter;
+                } else {
+                    // Fallback a centro paese (con jitter maggiore per evitare overlap)
+                    const jitter = 0.4;
+                    lat = countryCenter[0] + (Math.seededRandom(jitterSeed + "lat") - 0.5) * jitter;
+                    lng = countryCenter[1] + (Math.seededRandom(jitterSeed + "lng") - 0.5) * jitter;
+                }
 
                 const isActive = call.TIME === "";
                 let m;

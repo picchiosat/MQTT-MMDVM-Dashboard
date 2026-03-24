@@ -36,7 +36,8 @@ def init_db():
                   from_type TEXT, id_raw TEXT, callsign TEXT, name TEXT,
                   city TEXT, country TEXT,
                   tg TEXT, mode TEXT, slot TEXT, nodo TEXT, ber TEXT,
-                  data TEXT, orario TEXT, duration TEXT, start_ts REAL)''')
+                  data TEXT, orario TEXT, duration TEXT, start_ts REAL,
+                  lat REAL, lon REAL)''')
     
     # Migrazione per database esistenti senza colonne city/country
     try:
@@ -47,10 +48,17 @@ def init_db():
         # Le colonne esistono già
         pass
 
-    # Migrazione per database esistenti senza colonna source_ext
     try:
         c.execute("ALTER TABLE calls ADD COLUMN source_ext TEXT")
         print("DEBUG: Colonna source_ext aggiunta alla tabella calls.")
+    except sqlite3.OperationalError:
+        pass
+
+    # Migrazione per database esistenti senza colonne lat/lon
+    try:
+        c.execute("ALTER TABLE calls ADD COLUMN lat REAL")
+        c.execute("ALTER TABLE calls ADD COLUMN lon REAL")
+        print("DEBUG: Colonne lat/lon aggiunte alla tabella calls.")
     except sqlite3.OperationalError:
         pass
 
@@ -217,13 +225,13 @@ def save_or_update_call(call_data):
     else:
         # Nuova chiamata
         c.execute('''INSERT INTO calls 
-                     (from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, start_ts, duration, source_ext)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                     (from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, start_ts, duration, source_ext, lat, lon)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                   (call_data["FROM"], call_data["id_raw"], call_data["ID"], call_data["NAME"], 
                    call_data.get("CITY", ""), call_data.get("COUNTRY", ""),
                    call_data["TG"], call_data["MODE"], call_data["SLOT"], call_data["NODO"],
                    call_data["BER"], call_data["DATA"], call_data["ORARIO"], call_data["start_ts"], "",
-                   call_data.get("SOURCE_EXT", "")))
+                   call_data.get("SOURCE_EXT", ""), call_data.get("LAT"), call_data.get("LON")))
     
     conn.commit()
     conn.close()
@@ -231,7 +239,7 @@ def save_or_update_call(call_data):
 def get_recent_calls(limit=40):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('''SELECT from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, duration, start_ts, source_ext 
+    c.execute('''SELECT from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, duration, start_ts, source_ext, lat, lon 
                  FROM calls ORDER BY id DESC LIMIT ?''', (limit,))
     rows = c.fetchall()
     conn.close()
@@ -243,7 +251,8 @@ def get_recent_calls(limit=40):
             "CITY": r[4], "COUNTRY": r[5],
             "TG": r[6], "MODE": r[7], "SLOT": r[8], "NODO": r[9],
             "BER": r[10], "DATA": r[11], "ORARIO": r[12], "TIME": r[13],
-            "start_ts": r[14], "SOURCE_EXT": r[15] or ""
+            "start_ts": r[14], "SOURCE_EXT": r[15] or "",
+            "LAT": r[16], "LON": r[17]
         })
     return results
 
@@ -316,7 +325,9 @@ def on_message(client, userdata, msg):
                 "ORARIO": time.strftime("%H:%M:%S"),
                 "TIME": "",
                 "start_ts": now_ts,
-                "SOURCE_EXT": source_ext
+                "SOURCE_EXT": source_ext,
+                "LAT": data.get("lat") or data.get("latitude"),
+                "LON": data.get("lon") or data.get("longitude") or data.get("lng")
             }
             
             with calls_lock:
