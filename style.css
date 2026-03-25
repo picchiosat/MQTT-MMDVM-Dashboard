@@ -547,8 +547,8 @@ tbody tr:last-child td {
 /* Monitor Nodi Live */
 .nodes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
     margin-bottom: 30px;
     justify-content: center;
 }
@@ -558,12 +558,12 @@ tbody tr:last-child td {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 16px;
+    padding: 24px;
     transition: all 0.3s ease;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
     position: relative;
     overflow: hidden;
 }
@@ -619,16 +619,18 @@ tbody tr:last-child td {
 .node-name {
     font-weight: 700;
     color: #facc15;
-    font-size: 14px;
+    font-size: 16px;
     text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .node-status-badge {
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 10px;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
     font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .status-idle {
@@ -666,7 +668,8 @@ tbody tr:last-child td {
 .node-info-row {
     display: flex;
     justify-content: space-between;
-    font-size: 13px;
+    font-size: 14px;
+    padding: 2px 0;
 }
 
 .node-label {
@@ -692,9 +695,9 @@ tbody tr:last-child td {
 .node-timer {
     font-family: monospace;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 18px;
     text-align: right;
-    margin-top: 5px;
+    margin-top: 8px;
     color: var(--text-primary);
 }
 

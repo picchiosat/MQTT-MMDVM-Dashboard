@@ -35,6 +35,7 @@
         <div class="main-nav-bar">
             <div class="nav-group">
                 <button class="tab-btn active" data-tab="live">Monitor Live</button>
+                <button class="tab-btn" data-tab="nodes">Live Nodes</button>
                 <button class="tab-btn" data-tab="gateway">Gateway Status</button>
                 <button class="tab-btn" data-tab="stats">Analytics & Map</button>
             </div>
@@ -70,16 +71,8 @@
         </div>
 
         <div id="tab-live" class="tab-pane active">
-            <div class="monitor-header"
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3
-                    style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
-                    Live Nodes Monitor</h3>
-            </div>
-            <div id="nodes-status-container" class="nodes-grid"></div>
-
             <div class="table-header"
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 30px;">
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 10px;">
                 <h3
                     style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
                     Calls History</h3>
@@ -108,6 +101,16 @@
                     <tbody id="table-body"></tbody>
                 </table>
             </div>
+        </div>
+
+        <div id="tab-nodes" class="tab-pane">
+            <div class="monitor-header"
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h3 style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
+                    Live Nodes Monitor
+                </h3>
+            </div>
+            <div id="nodes-status-container" class="nodes-grid"></div>
         </div>
 
         <div id="tab-gateway" class="tab-pane">
@@ -629,6 +632,13 @@
                 const serverTime = response.server_time;
                 const localTime = Date.now() / 1000;
                 lastServerOffset = serverTime - localTime;
+
+                if (response.version) {
+                    const footer = document.querySelector('footer');
+                    if (footer) {
+                        footer.innerHTML = `© FreeDMR Italia - For amateur radio use only - Ver. ${response.version} - Developed by FreeDMR-IT Dev Team ${new Date().getFullYear()}`;
+                    }
+                }
 
                 // Crea uno snapshot per confronto (dati + filtri attivi)
                 const dataSnapshot = JSON.stringify(data) + `|${currentSource}|${currentMode}|${currentNode}|${currentTG}|${currentName}`;

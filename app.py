@@ -14,9 +14,16 @@ def index():
 @app.route("/data")
 def data():
     import time
+    import subprocess
+    try:
+        git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.STDOUT).decode("utf-8").strip()
+        git_date = subprocess.check_output(["git", "log", "-1", "--format=%cd", "--date=short"], stderr=subprocess.STDOUT).decode("utf-8").strip()
+        version_str = f"{git_hash} - {git_date}"
+    except Exception:
+        version_str = "1.0.1 β" # Fallback
 
     current_calls = mqtt_parser.get_recent_calls(limit=40)
-    return jsonify({"server_time": time.time(), "calls": current_calls})
+    return jsonify({"server_time": time.time(), "version": version_str, "calls": current_calls})
 
 
 @app.route("/gateway_status")
