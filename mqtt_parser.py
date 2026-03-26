@@ -369,9 +369,21 @@ def handle_call_start(topic, data, mode, slot, now_ts):
 def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
     topic_parts = topic.split('/')
     node_name = topic_parts[1] if len(topic_parts) >= 2 else "N/A"
+    source_type = "MMDVM" if topic.startswith("mmdvm/") else "GATEWAY"
+    
+    # Se il pacchetto (es. 'end') non contiene 'source', non lo usiamo per il matching
+    # per evitare di fallire l'abbinamento con una chiamata 'RF' iniziata prima.
+    pkt_source = data.get("source") or data.get("from")
+    if pkt_source:
+        pkt_source = pkt_source.upper()
+    
     with calls_lock:
         for c in reversed(calls):
-            if c["MODE"] == mode and c["TIME"] == "" and c["NODO"] == node_name and (mode != "DMR" or c["SLOT"] == slot):
+            # Match strictly only if pkt_source is provided, otherwise match node/slot/mode
+            match_from = (pkt_source is None or c["FROM"] == pkt_source)
+            if c["MODE"] == mode and c["TIME"] == "" and c["NODO"] == node_name and \
+               c["SOURCE_TYPE"] == source_type and match_from and \
+               (mode != "DMR" or c["SLOT"] == slot):
                 if action in ["end", "lost", "watchdog", "timeout"]:
                     json_dur = data.get("duration")
                     try:
