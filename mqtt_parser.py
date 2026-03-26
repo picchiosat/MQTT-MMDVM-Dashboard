@@ -44,6 +44,8 @@ MQTT_CONFIG = {
     "pass": os.environ.get("MQTT_PASS")
 }
 
+HTTP_PORT = int(os.environ.get("HTTP_PORT", 7000))
+
 from pathlib import Path
 DB_PATH = str(Path(__file__).parent / "dashboard.db")
 
