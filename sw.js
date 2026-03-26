@@ -1,9 +1,11 @@
-const CACHE_NAME = 'mmdvm-dash-v1';
+const CACHE_NAME = 'mmdvm-dash-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
-  '/manifest.json'
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,7 +1,7 @@
 {
-  "name": "MMDVM MQTT Dashboard",
+  "name": "MQTT MMDVM Dashboard",
   "short_name": "MMDVM Dash",
-  "description": "Real-time MMDVM MQTT Traffic Dashboard",
+  "description": "Real-time Multi Repeater Traffic Dashboard",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

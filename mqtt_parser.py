@@ -325,8 +325,14 @@ def handle_call_start(topic, data, mode, slot, now_ts):
     
     uid = src_call_raw if (mode.upper() in ["YSF", "D-STAR"] or not src_id_raw) else src_id_raw
     
+    src_from = (data.get("source") or data.get("from") or "NET").upper()
     with calls_lock:
-        if any(c["id_raw"] == uid and c["TIME"] == "" and (now_ts - c["start_ts"]) < 2 for c in calls):
+        # Deduplicazione relax: evita solo duplicati esatti (stesso utente, stesso nodo, stesso slot e stessa origine)
+        # Questo permette di vedere lo stesso utente attivo su più nodi o via sia RF che NETWORK.
+        if any(c["id_raw"] == uid and c["TIME"] == "" and 
+               c["NODO"] == node_name and c["SLOT"] == slot and 
+               c["FROM"] == src_from and (now_ts - c["start_ts"]) < 2 
+               for c in calls):
             return
 
     callsign = src_call_raw.upper().strip()
@@ -352,7 +358,7 @@ def handle_call_start(topic, data, mode, slot, now_ts):
     source_ext = data.get("source_ext", "") if mode.upper() == "D-STAR" else ""
 
     new_call = {
-        "FROM": (data.get("source") or data.get("from") or "NET").upper(),
+        "FROM": src_from,
         "id_raw": uid, "ID": callsign, "NAME": name, "CITY": city, "COUNTRY": country,
         "TG": target, "MODE": mode, "SLOT": slot, "NODO": node_name, 
         "BER": format_ber(data.get("ber") or data.get("BER")), "DATA": time.strftime("%d-%m-%Y"),

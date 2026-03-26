@@ -19,10 +19,11 @@ def data():
         git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.STDOUT).decode("utf-8").strip()
         git_date = subprocess.check_output(["git", "log", "-1", "--format=%cd", "--date=short"], stderr=subprocess.STDOUT).decode("utf-8").strip()
         version_str = f"{git_hash} - {git_date}"
-    except Exception:
-        version_str = "1.0.1 β" # Fallback
+    except Exception as e:
+        print(f"DEBUG: Git version check failed: {e}")
+        version_str = "1.0.1 β (Static)" # Fallback
 
-    current_calls = mqtt_parser.get_recent_calls(limit=200)
+    current_calls = mqtt_parser.get_recent_calls(limit=50)
     return jsonify({"server_time": time.time(), "version": version_str, "calls": current_calls})
 
 
@@ -58,11 +59,11 @@ if __name__ == "__main__":
     try:
         from waitress import serve
 
-        print("Avvio del server WSGI (Waitress) sulla porta 7000...")
+        print(f"Avvio del server WSGI (Waitress) sulla porta {mqtt_parser.HTTP_PORT}...")
         serve(app, host="0.0.0.0", port=mqtt_parser.HTTP_PORT)
     except ImportError:
         print(
-            "Libreria Waitress non trovata. Esecuzione server di sviluppo Flask sulla porta 958..."
+            f"Libreria Waitress non trovata. Esecuzione server di sviluppo Flask sulla porta {mqtt_parser.HTTP_PORT}..."
         )
         print(
             "Consiglio: per un ambiente stabile in produzione installa 'pip install waitress'."

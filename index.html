@@ -9,6 +9,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 
 <body>
@@ -174,8 +179,7 @@
     </main>
 
     <footer>
-        © FreeDMR Italia - For amateur radio use only - Ver. 1.0.1 β - 24/03/2026 - Developed by FreeDMR-IT Dev Team
-        2026
+        © FreeDMR Italia - For amateur radio use only - Ver. Loading... - Developed by FreeDMR-IT Dev Team
     </footer>
 
     <script>
@@ -736,6 +740,7 @@
                 lastServerOffset = serverTime - localTime;
 
                 if (response.version) {
+                    console.log("Dashboard Version:", response.version);
                     const footer = document.querySelector('footer');
                     if (footer) {
                         footer.innerHTML = `© FreeDMR Italia - For amateur radio use only - Ver. ${response.version} - Developed by FreeDMR-IT Dev Team ${new Date().getFullYear()}`;
