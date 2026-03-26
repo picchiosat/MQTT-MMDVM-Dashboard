@@ -590,7 +590,10 @@
 
             return `<div class="node-card ${isTX ? 'tx' : ''}">
                         <div class="node-header">
-                            <span class="node-name">${escapeHtml(nodeName)}</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="node-name">${escapeHtml(nodeName)}</span>
+                                <span class="badge ${lastCall.FROM === 'RF' ? 'rf' : 'netw'}" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(lastCall.FROM)}</span>
+                            </div>
                             <span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}">${isTX ? 'Transmitting' : 'Idle'}</span>
                         </div>
                         <div class="node-body">
@@ -637,6 +640,7 @@
 
             let modeClass = lastCall.MODE ? ("badge mode-" + escapeHtml(lastCall.MODE).toLowerCase()) : "";
             const statusBadge = `<span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}" style="width: 100px; display: inline-block; text-align: center;">${isTX ? 'Transmitting' : 'Idle'}</span>`;
+            const fromBadge = `<span class="badge ${lastCall.FROM === 'RF' ? 'rf' : 'netw'}" style="font-size: 10px; padding: 2px 6px; margin-left: 6px;">${escapeHtml(lastCall.FROM)}</span>`;
             let berClass = "ber-cell " + getBerClass(lastCall.BER);
 
             const startTsAttr = isTX ? ` data-start-ts="${lastCall.start_ts}"` : '';
@@ -644,7 +648,7 @@
             const extSuffix = (lastCall.MODE && lastCall.MODE.toUpperCase() === 'D-STAR' && lastCall.SOURCE_EXT) ? ` <span style="color: #14b8a6; font-size: 11px;">${escapeHtml(lastCall.SOURCE_EXT)}</span>` : '';
 
             return `<tr class="${rowClass}"${startTsAttr}>
-                <td data-label="NODE" style="font-weight: 600;">${escapeHtml(nodeName)}</td>
+                <td data-label="NODE" style="font-weight: 600;">${escapeHtml(nodeName)}${fromBadge}</td>
                 <td data-label="STATUS">${statusBadge}</td>
                 <td data-label="OPERATOR" class="id-cell">${escapeHtml(lastCall.ID)}${extSuffix}</td>
                 <td data-label="NAME" class="name-cell">${escapeHtml(lastCall.NAME)}</td>
@@ -779,6 +783,8 @@
                             const slot = call.SLOT || "1";
                             nodeKey += `_TS${slot}`;
                         }
+                        const fromType = call.FROM === "RF" ? "RF" : "NETW";
+                        nodeKey += `_${call.SOURCE_TYPE}_${fromType}`;
 
                         if (!nodesMap.has(nodeKey)) {
                             nodesMap.set(nodeKey, call);
