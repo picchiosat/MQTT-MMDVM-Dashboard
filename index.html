@@ -44,12 +44,6 @@
                 <button class="tab-btn" data-tab="gateway">Gateway Status</button>
                 <button class="tab-btn" data-tab="stats">Analytics & Map</button>
             </div>
-            <div class="nav-divider"></div>
-            <div class="nav-group source-group">
-                <button class="source-tab-btn active" data-source="all">ALL SOURCES</button>
-                <button class="source-tab-btn" data-source="MMDVM">MMDVM</button>
-                <button class="source-tab-btn" data-source="GATEWAY">GATEWAY</button>
-            </div>
         </div>
 
         <div class="filter-row">
@@ -194,7 +188,6 @@
         }
 
         let currentMode = "all";
-        let currentSource = "all";
         let currentNode = "all";
         let currentTG = "all";
         let currentName = "all";
@@ -436,14 +429,6 @@
             });
         });
 
-        document.querySelectorAll('.source-tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.source-tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentSource = btn.getAttribute('data-source');
-                loadData();
-            });
-        });
 
         // Event listeners per le nuove dropdown
         document.getElementById('node-filter').addEventListener('change', (e) => {
@@ -511,10 +496,7 @@
                     if (defaultModeBtn) defaultModeBtn.classList.add('active');
                     currentMode = "all";
 
-                    document.querySelectorAll('.source-tab-btn').forEach(b => b.classList.remove('active'));
-                    const defaultSourceBtn = document.querySelector('.source-tab-btn[data-source="all"]');
-                    if (defaultSourceBtn) defaultSourceBtn.classList.add('active');
-                    currentSource = "all";
+                    currentMode = "all";
 
                     document.getElementById('node-filter').value = "all";
                     document.getElementById('tg-filter').value = "all";
@@ -537,16 +519,6 @@
                     s.classList.toggle('disabled', disableFilters);
                     s.disabled = disableFilters;
                 });
-                // Gestione visibilità selettore sorgenti (ora in nav-bar)
-                const sourceGroup = document.querySelector('.source-group');
-                const navDivider = document.querySelector('.nav-divider');
-                if (sourceGroup) {
-                    sourceGroup.style.opacity = disableFilters ? '0.3' : '1';
-                    sourceGroup.style.pointerEvents = disableFilters ? 'none' : 'auto';
-                }
-                if (navDivider) {
-                    navDivider.style.opacity = disableFilters ? '0.3' : '1';
-                }
 
                 if (isStats && map) {
                     setTimeout(() => map.invalidateSize(), 100);
@@ -748,7 +720,7 @@
                 }
 
                 // Crea uno snapshot per confronto (dati + filtri attivi)
-                const dataSnapshot = JSON.stringify(data) + `|${currentSource}|${currentMode}|${currentNode}|${currentTG}|${currentName}`;
+                const dataSnapshot = JSON.stringify(data) + `|${currentMode}|${currentNode}|${currentTG}|${currentName}`;
                 const dataChanged = dataSnapshot !== lastDataSnapshot;
                 lastDataSnapshot = dataSnapshot;
 
@@ -776,35 +748,46 @@
                     const nodesStatusContainer = document.getElementById("nodes-status-container");
                     const nodesMap = new Map();
 
+                    const nodesByNode = new Map(); // nodeName -> { calls: Map(slot -> call), limit: 1 }
+
                     data.forEach(call => {
-                        const sourceMatch = currentSource === "all" || call.SOURCE_TYPE === currentSource;
                         const modeMatch = currentMode === "all" || (call.MODE && call.MODE.toLowerCase() === currentMode);
                         const tgMatch = currentTG === "all" || call.TG === currentTG;
                         const nameMatch = currentName === "all" || call.NAME === currentName;
-                        if (!sourceMatch || !modeMatch || !tgMatch || !nameMatch) return;
+                        if (!modeMatch || !tgMatch || !nameMatch) return;
                         
-                        let nodeKey = (call.NODO || "N/A").toUpperCase();
-                        if (call.MODE && call.MODE.toUpperCase() === 'DMR') {
-                            const slot = call.SLOT || "1";
-                            nodeKey += `_TS${slot}`;
+                        const nodeName = (call.NODO || "N/A").toUpperCase();
+                        if (!nodesByNode.has(nodeName)) {
+                            const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
+                            nodesByNode.set(nodeName, { calls: new Map(), limit: isDMR ? 2 : 1 });
                         }
-                        const fromType = call.FROM === "RF" ? "RF" : "NETW";
-                        nodeKey += `_${call.SOURCE_TYPE}_${fromType}`;
-
-                        if (!nodesMap.has(nodeKey)) {
-                            nodesMap.set(nodeKey, call);
+                        
+                        const nodeInfo = nodesByNode.get(nodeName);
+                        if (nodeInfo.calls.size < nodeInfo.limit) {
+                            const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
+                            const slotKey = isDMR ? (call.SLOT || "1") : "ALL";
+                            if (!nodeInfo.calls.has(slotKey)) {
+                                nodeInfo.calls.set(slotKey, call);
+                            }
                         }
                     });
 
-                    const sortedNodes = Array.from(nodesMap.keys()).sort();
+                    // Appiattiamo la mappa per l'ordinamento e la visualizzazione
+                    const finalNodes = [];
+                    Array.from(nodesByNode.keys()).sort().forEach(nodeName => {
+                        const nodeInfo = nodesByNode.get(nodeName);
+                        Array.from(nodeInfo.calls.keys()).sort().forEach(slotKey => {
+                            const call = nodeInfo.calls.get(slotKey);
+                            if (currentNode !== "all" && nodeName !== currentNode) return;
+                            finalNodes.push({ name: nodeName, call: call });
+                        });
+                    });
+
                     let nodesHtml = "";
                     let nodesTableHtml = "";
-                    sortedNodes.forEach(nodeKey => {
-                        const call = nodesMap.get(nodeKey);
-                        const nodeName = (call.NODO || "N/A").toUpperCase();
-                        if (currentNode !== "all" && nodeName !== currentNode) return;
-                        nodesHtml += buildNodeCardHtml(nodeName, call, lastServerOffset);
-                        nodesTableHtml += buildNodeTableRowHtml(nodeName, call, lastServerOffset);
+                    finalNodes.forEach(item => {
+                        nodesHtml += buildNodeCardHtml(item.name, item.call, lastServerOffset);
+                        nodesTableHtml += buildNodeTableRowHtml(item.name, item.call, lastServerOffset);
                     });
                     nodesStatusContainer.innerHTML = nodesHtml;
                     const nodesTableBody = document.getElementById("nodes-table-body");
@@ -815,13 +798,12 @@
                     let tableHtml = "";
 
                     data.forEach(call => {
-                        const sourceMatch = currentSource === "all" || call.SOURCE_TYPE === currentSource;
                         const modeMatch = currentMode === "all" || (call.MODE && call.MODE.toLowerCase() === currentMode);
                         const nodeMatch = currentNode === "all" || (call.NODO && call.NODO.toUpperCase() === currentNode);
                         const tgMatch = currentTG === "all" || call.TG === currentTG;
                         const nameMatch = currentName === "all" || call.NAME === currentName;
 
-                        if (sourceMatch && modeMatch && nodeMatch && tgMatch && nameMatch) {
+                        if (modeMatch && nodeMatch && tgMatch && nameMatch) {
                             tableHtml += buildRowHtml(call, lastServerOffset);
                         }
                     });
