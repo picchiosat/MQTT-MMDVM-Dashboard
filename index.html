@@ -564,13 +564,32 @@
                 if (displayDuration.includes("!")) displayDuration = displayDuration.replace("!", "") + "!";
             }
 
+            // Compute status: Transmitting -> MODE (10s) -> Idle
+            let statusText, statusClass, endTs = 0;
+            if (isTX) {
+                statusText = 'Transmitting';
+                statusClass = 'status-tx';
+            } else {
+                const durStr = (lastCall.TIME || '0').toString().replace('!', '');
+                const dur = parseFloat(durStr) || 0;
+                endTs = (lastCall.start_ts || 0) + dur;
+                const currentServerTime = (Date.now() / 1000) + serverOffset;
+                if ((currentServerTime - endTs) < 10) {
+                    statusText = escapeHtml(lastCall.MODE || 'Idle');
+                    statusClass = 'status-mode';
+                } else {
+                    statusText = 'Idle';
+                    statusClass = 'status-idle';
+                }
+            }
+
             return `<div class="node-card ${isTX ? 'tx' : ''}">
                         <div class="node-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span class="node-name">${escapeHtml(nodeName)}</span>
                                 <span class="badge ${lastCall.FROM === 'RF' ? 'rf' : 'netw'}" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(lastCall.FROM)}</span>
                             </div>
-                            <span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}">${isTX ? 'Transmitting' : 'Idle'}</span>
+                            <span class="node-status-badge ${statusClass}" data-end-ts="${endTs || ''}" data-mode="${escapeHtml(lastCall.MODE || '')}">${statusText}</span>
                         </div>
                         <div class="node-body">
                             <div class="node-info-row">
@@ -615,7 +634,27 @@
             }
 
             let modeClass = lastCall.MODE ? ("badge mode-" + escapeHtml(lastCall.MODE).toLowerCase()) : "";
-            const statusBadge = `<span class="node-status-badge ${isTX ? 'status-tx' : 'status-idle'}" style="width: 100px; display: inline-block; text-align: center;">${isTX ? 'Transmitting' : 'Idle'}</span>`;
+
+            // Compute status: Transmitting -> MODE (10s) -> Idle
+            let statusText, statusClass, endTs = 0;
+            if (isTX) {
+                statusText = 'Transmitting';
+                statusClass = 'status-tx';
+            } else {
+                const durStr = (lastCall.TIME || '0').toString().replace('!', '');
+                const dur = parseFloat(durStr) || 0;
+                endTs = (lastCall.start_ts || 0) + dur;
+                const currentServerTime = (Date.now() / 1000) + serverOffset;
+                if ((currentServerTime - endTs) < 10) {
+                    statusText = escapeHtml(lastCall.MODE || 'Idle');
+                    statusClass = 'status-mode';
+                } else {
+                    statusText = 'Idle';
+                    statusClass = 'status-idle';
+                }
+            }
+
+            const statusBadge = `<span class="node-status-badge ${statusClass}" style="width: 100px; display: inline-block; text-align: center;" data-end-ts="${endTs || ''}" data-mode="${escapeHtml(lastCall.MODE || '')}">${statusText}</span>`;
             const fromBadge = `<span class="badge ${lastCall.FROM === 'RF' ? 'rf' : 'netw'}" style="font-size: 10px; padding: 2px 6px; margin-left: 6px;">${escapeHtml(lastCall.FROM)}</span>`;
             let berClass = "ber-cell " + getBerClass(lastCall.BER);
 
@@ -868,6 +907,17 @@
                 if (diff < 0) diff = 0;
                 const timeCell = row.querySelector('.time-cell');
                 if (timeCell) timeCell.textContent = diff + "s";
+            });
+
+            // Transizione status badge: MODE -> Idle dopo 10 secondi dalla fine TX
+            document.querySelectorAll('.node-status-badge[data-end-ts]').forEach(el => {
+                const endTs = parseFloat(el.dataset.endTs);
+                if (!endTs || isNaN(endTs)) return;
+                if ((now - endTs) >= 10 && !el.classList.contains('status-idle')) {
+                    el.textContent = 'Idle';
+                    el.classList.remove('status-mode', 'status-tx');
+                    el.classList.add('status-idle');
+                }
             });
         }
 

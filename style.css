@@ -617,6 +617,12 @@ tr.active td:first-child {
     color: var(--text-secondary);
 }
 
+.status-mode {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
 .status-tx {
     background: var(--rf-color);
     color: white;
