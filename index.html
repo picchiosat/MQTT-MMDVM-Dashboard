@@ -592,7 +592,7 @@
                 const dur = parseFloat(durStr) || 0;
                 endTs = (lastCall.start_ts || 0) + dur;
                 const currentServerTime = (Date.now() / 1000) + serverOffset;
-                if ((currentServerTime - endTs) < 10) {
+                if (!lastCall.is_idle && (currentServerTime - endTs) < 10) {
                     statusText = escapeHtml(lastCall.MODE || 'Idle');
                     statusClass = 'status-mode';
                 } else {
@@ -663,7 +663,7 @@
                 const dur = parseFloat(durStr) || 0;
                 endTs = (lastCall.start_ts || 0) + dur;
                 const currentServerTime = (Date.now() / 1000) + serverOffset;
-                if ((currentServerTime - endTs) < 10) {
+                if (!lastCall.is_idle && (currentServerTime - endTs) < 10) {
                     statusText = escapeHtml(lastCall.MODE || 'Idle');
                     statusClass = 'status-mode';
                 } else {

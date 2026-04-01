@@ -59,7 +59,7 @@ def init_db():
                   city TEXT, country TEXT,
                   tg TEXT, mode TEXT, slot TEXT, nodo TEXT, ber TEXT,
                   data TEXT, orario TEXT, duration TEXT, start_ts REAL,
-                  lat REAL, lon REAL)''')
+                  lat REAL, lon REAL, is_idle INTEGER DEFAULT 0)''')
     
     # Migrazione per database esistenti senza colonne city/country
     try:
@@ -88,6 +88,13 @@ def init_db():
         c.execute("ALTER TABLE calls ADD COLUMN lat REAL")
         c.execute("ALTER TABLE calls ADD COLUMN lon REAL")
         print("DEBUG: Colonne lat/lon aggiunte alla tabella calls.")
+    except sqlite3.OperationalError:
+        pass
+
+    # Migrazione per is_idle
+    try:
+        c.execute("ALTER TABLE calls ADD COLUMN is_idle INTEGER DEFAULT 0")
+        print("DEBUG: Colonna is_idle aggiunta alla tabella calls.")
     except sqlite3.OperationalError:
         pass
 
@@ -245,32 +252,33 @@ def save_or_update_call(call_data):
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         if call_data.get("TIME") != "":
-            c.execute('''UPDATE calls SET duration=?, ber=? 
+            c.execute('''UPDATE calls SET duration=?, ber=?, is_idle=? 
                          WHERE mode=? AND slot=? AND start_ts=?''',
-                      (call_data["TIME"], call_data["BER"], 
+                      (call_data["TIME"], call_data["BER"], call_data.get("is_idle", 0), 
                        call_data["MODE"], call_data["SLOT"], call_data["start_ts"]))
         else:
             c.execute("SELECT id FROM calls WHERE mode=? AND slot=? AND start_ts=?", 
                       (call_data["MODE"], call_data["SLOT"], call_data["start_ts"]))
             existing = c.fetchone()
             if existing:
-                c.execute("UPDATE calls SET ber=? WHERE id=?", (call_data["BER"], existing[0]))
+                c.execute("UPDATE calls SET ber=?, is_idle=? WHERE id=?", 
+                          (call_data["BER"], call_data.get("is_idle", 0), existing[0]))
             else:
                 c.execute('''INSERT INTO calls 
-                             (from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, start_ts, duration, source_ext, lat, lon, source_type)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                             (from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, start_ts, duration, source_ext, lat, lon, source_type, is_idle)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                            (call_data["FROM"], call_data["id_raw"], call_data["ID"], call_data["NAME"], 
                             call_data.get("CITY", ""), call_data.get("COUNTRY", ""),
                             call_data["TG"], call_data["MODE"], call_data["SLOT"], call_data["NODO"],
                             call_data["BER"], call_data["DATA"], call_data["ORARIO"], call_data["start_ts"], "",
                             call_data.get("SOURCE_EXT", ""), call_data.get("LAT"), call_data.get("LON"),
-                            call_data.get("SOURCE_TYPE", "MMDVM")))
+                            call_data.get("SOURCE_TYPE", "MMDVM"), call_data.get("is_idle", 0)))
         conn.commit()
 
 def get_recent_calls(limit=40):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('''SELECT from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, duration, start_ts, source_ext, lat, lon, source_type 
+    c.execute('''SELECT from_type, id_raw, callsign, name, city, country, tg, mode, slot, nodo, ber, data, orario, duration, start_ts, source_ext, lat, lon, source_type, is_idle 
                  FROM calls ORDER BY id DESC LIMIT ?''', (limit,))
     rows = c.fetchall()
     conn.close()
@@ -284,7 +292,8 @@ def get_recent_calls(limit=40):
             "BER": r[10], "DATA": r[11], "ORARIO": r[12], "TIME": r[13],
             "start_ts": r[14], "SOURCE_EXT": r[15] or "",
             "LAT": r[16], "LON": r[17],
-            "SOURCE_TYPE": r[18] if len(r) > 18 else "MMDVM"
+            "SOURCE_TYPE": r[18] if len(r) > 18 else "MMDVM",
+            "is_idle": r[19] if len(r) > 19 else 0
         })
     return results
 
@@ -364,7 +373,8 @@ def handle_call_start(topic, data, mode, slot, now_ts):
         "BER": format_ber(data.get("ber") or data.get("BER")), "DATA": time.strftime("%d-%m-%Y"),
         "ORARIO": time.strftime("%H:%M:%S"), "TIME": "", "start_ts": now_ts,
         "SOURCE_EXT": source_ext, "LAT": data.get("lat") or data.get("latitude"),
-        "LON": data.get("lon") or data.get("longitude") or data.get("lng"), "SOURCE_TYPE": source_type
+        "LON": data.get("lon") or data.get("longitude") or data.get("lng"), "SOURCE_TYPE": source_type,
+        "is_idle": 0
     }
     
     with calls_lock:
@@ -390,7 +400,11 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
             if c["MODE"] == mode and c["TIME"] == "" and c["NODO"] == node_name and \
                c["SOURCE_TYPE"] == source_type and match_from and \
                (mode != "DMR" or c["SLOT"] == slot):
-                if action in ["end", "lost", "watchdog", "timeout"]:
+                if data.get("mode") == "idle":
+                    c["is_idle"] = 1
+                    if c["TIME"] == "":
+                        c["TIME"] = round(now_ts - c["start_ts"], 1)
+                elif action in ["end", "lost", "watchdog", "timeout"]:
                     json_dur = data.get("duration")
                     try:
                         val_dur = round(float(json_dur), 1) if json_dur is not None else round(now_ts - c["start_ts"], 1)
