@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
+
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -105,16 +105,33 @@
         <div id="tab-nodes" class="tab-pane">
             <div class="monitor-header"
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                <h3 style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
+                <h3
+                    style="margin: 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
                     Live Nodes Monitor
                 </h3>
                 <div class="view-toggle" style="display: flex; gap: 8px;">
-                    <button id="view-cards-btn" class="filter-btn" style="display: flex; align-items: center; gap: 6px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    <button id="view-cards-btn" class="filter-btn"
+                        style="display: flex; align-items: center; gap: 6px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
                         Cards
                     </button>
-                    <button id="view-table-btn" class="filter-btn active" style="display: flex; align-items: center; gap: 6px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    <button id="view-table-btn" class="filter-btn active"
+                        style="display: flex; align-items: center; gap: 6px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
                         Table
                     </button>
                 </div>
@@ -140,7 +157,8 @@
         </div>
 
         <div id="tab-gateway" class="tab-pane">
-            <h3 style="margin: 0 0 20px 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
+            <h3
+                style="margin: 0 0 20px 0; font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
                 Gateway Link Status</h3>
             <div id="gateway-grid" class="gateway-grid"></div>
             <div id="gateway-log" class="gateway-log"></div>
@@ -153,7 +171,7 @@
                     <option value="all">ALL COUNTRY</option>
                 </select>
             </div>
-            
+
             <div class="map-wrapper">
                 <div id="map"></div>
             </div>
@@ -257,14 +275,14 @@
         };
 
         function initMap() {
-            map = L.map('map', { 
+            map = L.map('map', {
                 zoomControl: true,
                 dragging: true,
                 touchZoom: true,
                 doubleClickZoom: true,
                 scrollWheelZoom: true
             }).setView([42, 12], 4);
-            
+
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
@@ -357,7 +375,7 @@
         }
 
         // Funzione helper per jitter deterministico basato su ID
-        Math.seededRandom = function(seed) {
+        Math.seededRandom = function (seed) {
             let hash = 0;
             for (let i = 0; i < seed.length; i++) {
                 hash = ((hash << 5) - hash) + seed.charCodeAt(i);
@@ -659,7 +677,7 @@
             let berClass = "ber-cell " + getBerClass(lastCall.BER);
 
             const startTsAttr = isTX ? ` data-start-ts="${lastCall.start_ts}"` : '';
-            
+
             const extSuffix = (lastCall.MODE && lastCall.MODE.toUpperCase() === 'D-STAR' && lastCall.SOURCE_EXT) ? ` <span style="color: #14b8a6; font-size: 11px;">${escapeHtml(lastCall.SOURCE_EXT)}</span>` : '';
 
             return `<tr class="${rowClass}"${startTsAttr}>
@@ -794,13 +812,13 @@
                         const tgMatch = currentTG === "all" || call.TG === currentTG;
                         const nameMatch = currentName === "all" || call.NAME === currentName;
                         if (!modeMatch || !tgMatch || !nameMatch) return;
-                        
+
                         const nodeName = (call.NODO || "N/A").toUpperCase();
                         if (!nodesByNode.has(nodeName)) {
                             const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
                             nodesByNode.set(nodeName, { calls: new Map(), limit: isDMR ? 2 : 1 });
                         }
-                        
+
                         const nodeInfo = nodesByNode.get(nodeName);
                         if (nodeInfo.calls.size < nodeInfo.limit) {
                             const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
@@ -913,7 +931,7 @@
             document.querySelectorAll('.node-status-badge[data-end-ts]').forEach(el => {
                 const endTs = parseFloat(el.dataset.endTs);
                 if (!endTs || isNaN(endTs)) return;
-                if ((now - endTs) >= 10 && !el.classList.contains('status-idle')) {
+                if ((now - endTs) >= 30 && !el.classList.contains('status-idle')) {
                     el.textContent = 'Idle';
                     el.classList.remove('status-mode', 'status-tx');
                     el.classList.add('status-idle');
@@ -929,7 +947,7 @@
                 const res = await fetch('/gateway_status');
                 const response = await res.json();
                 const gateways = response.gateways || [];
-                
+
                 const dataSnapshot = JSON.stringify(gateways);
                 if (dataSnapshot === lastGatewayData) return;
                 lastGatewayData = dataSnapshot;
@@ -954,24 +972,24 @@
                 sortedGateways.forEach(gw => {
                     const typeClass = gw.type.toLowerCase();
                     const actionClass = gw.action || 'unknown';
-                    const statusClass = actionClass === 'linked' ? 'linked' : 
-                                       actionClass === 'linking' ? 'linking' :
-                                       actionClass === 'online' ? 'online' : 'unlinked';
-                    
+                    const statusClass = actionClass === 'linked' ? 'linked' :
+                        actionClass === 'linking' ? 'linking' :
+                            actionClass === 'online' ? 'online' : 'unlinked';
+
                     const actionLabel = gw.action === 'linking' ? 'Linking...' :
-                                       gw.action === 'linked' ? 'Linked' :
-                                       gw.action === 'failed' ? 'Failed' :
-                                       gw.action === 'online' ? 'Online' : 'Disconnected';
-                    
+                        gw.action === 'linked' ? 'Linked' :
+                            gw.action === 'failed' ? 'Failed' :
+                                gw.action === 'online' ? 'Online' : 'Disconnected';
+
                     const targetLabel = gw.talkgroup || gw.repeater || '-';
                     const reasonLabel = gw.reason || '-';
-                    
+
                     let timestampLabel = '-';
                     if (gw.timestamp) {
                         try {
                             const ts = new Date(gw.timestamp);
                             timestampLabel = ts.toLocaleString('it-IT');
-                        } catch(e) {
+                        } catch (e) {
                             timestampLabel = gw.timestamp;
                         }
                     }
@@ -1015,13 +1033,13 @@
                         try {
                             const ts = new Date(gw.timestamp);
                             tsLabel = ts.toLocaleString('it-IT');
-                        } catch(e) {
+                        } catch (e) {
                             tsLabel = gw.timestamp;
                         }
                         const actionClass = gw.action === 'linked' ? 'linked' :
-                                           gw.action === 'linking' ? 'linking' : 'unlinked';
+                            gw.action === 'linking' ? 'linking' : 'unlinked';
                         const targetLabel = gw.talkgroup || gw.repeater || gw.reason || '-';
-                        
+
                         logHtml += `
                             <div class="gateway-log-entry">
                                 <span class="gateway-log-time">${escapeHtml(tsLabel)}</span>
