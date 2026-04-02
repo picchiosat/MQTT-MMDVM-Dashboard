@@ -394,16 +394,30 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
         pkt_source = pkt_source.upper()
     
     with calls_lock:
+        found_any = False
         for c in reversed(calls):
-            # Match strictly only if pkt_source is provided, otherwise match node/slot/mode
-            match_from = (pkt_source is None or c["FROM"] == pkt_source)
-            if c["MODE"] == mode and c["TIME"] == "" and c["NODO"] == node_name and \
+            # Se è un pacchetto 'idle', chiudiamo tutto su quello slot.
+            # Permettiamo il match anche se TIME è già impostato (es. arrivato un 'end' poco prima)
+            is_idle_pkt = (data.get("mode") == "idle")
+            
+            # Per i pacchetti 'end/lost/etc' serve che la chiamata sia ancora attiva (TIME == "")
+            # Per i pacchetti 'idle' vogliamo marcare l'ultima chiamata come idle anche se è appena finita
+            is_active_match = (c["TIME"] == "" or is_idle_pkt)
+            match_from = (pkt_source is None or c["FROM"] == pkt_source or is_idle_pkt)
+            
+            if c["MODE"] == mode and is_active_match and c["NODO"] == node_name and \
                c["SOURCE_TYPE"] == source_type and match_from and \
                (mode != "DMR" or c["SLOT"] == slot):
-                if data.get("mode") == "idle":
+                
+                if is_idle_pkt:
                     c["is_idle"] = 1
                     if c["TIME"] == "":
                         c["TIME"] = round(now_ts - c["start_ts"], 1)
+                    save_or_update_call(c)
+                    found_any = True
+                    # Continuiamo per chiudere eventuali altri flussi rimasti appesi sullo stesso slot
+                    continue
+                
                 elif action in ["end", "lost", "watchdog", "timeout"]:
                     json_dur = data.get("duration")
                     try:
@@ -411,12 +425,14 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
                     except:
                         val_dur = round(now_ts - c["start_ts"], 1)
                     c["TIME"] = f"{val_dur}!" if action == "lost" else val_dur
-                
-                ber_val = data.get("ber") or data.get("BER")
-                if ber_val is not None:
-                    c["BER"] = format_ber(ber_val)
-                save_or_update_call(c)
-                break
+                    
+                    ber_val = data.get("ber") or data.get("BER")
+                    if ber_val is not None:
+                        c["BER"] = format_ber(ber_val)
+                        
+                    save_or_update_call(c)
+                    found_any = True
+                    break
 
 def on_message(client, userdata, msg):
     try:

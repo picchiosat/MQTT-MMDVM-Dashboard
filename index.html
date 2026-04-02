@@ -820,12 +820,13 @@
                         }
 
                         const nodeInfo = nodesByNode.get(nodeName);
-                        if (nodeInfo.calls.size < nodeInfo.limit) {
-                            const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
-                            const slotKey = isDMR ? (call.SLOT || "1") : "ALL";
-                            if (!nodeInfo.calls.has(slotKey)) {
-                                nodeInfo.calls.set(slotKey, call);
-                            }
+                        const isDMR = (call.MODE && call.MODE.toUpperCase() === 'DMR');
+                        const slotKey = isDMR ? (call.SLOT || "1") : "ALL";
+
+                        // PRIORITÀ: Mostra la chiamata attiva (TIME == "") anche se più vecchia
+                        const existing = nodeInfo.calls.get(slotKey);
+                        if (!existing || (existing.TIME !== "" && call.TIME === "")) {
+                            nodeInfo.calls.set(slotKey, call);
                         }
                     });
 
@@ -931,7 +932,7 @@
             document.querySelectorAll('.node-status-badge[data-end-ts]').forEach(el => {
                 const endTs = parseFloat(el.dataset.endTs);
                 if (!endTs || isNaN(endTs)) return;
-                if ((now - endTs) >= 30 && !el.classList.contains('status-idle')) {
+                if ((now - endTs) >= 10 && !el.classList.contains('status-idle')) {
                     el.textContent = 'Idle';
                     el.classList.remove('status-mode', 'status-tx');
                     el.classList.add('status-idle');
