@@ -623,6 +623,18 @@ tr.active td:first-child {
     border: 1px solid rgba(59, 130, 246, 0.25);
 }
 
+.status-listening {
+    background: rgba(45, 212, 191, 0.15);
+    color: #99f6e4;
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    animation: pulseSoft 2s infinite;
+}
+
+@keyframes pulseSoft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(0.98); }
+}
+
 .status-tx {
     background: var(--rf-color);
     color: white;

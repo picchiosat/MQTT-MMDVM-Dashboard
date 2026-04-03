@@ -592,9 +592,9 @@
                 const dur = parseFloat(durStr) || 0;
                 endTs = (lastCall.start_ts || 0) + dur;
                 const currentServerTime = (Date.now() / 1000) + serverOffset;
-                if (!lastCall.is_idle && (currentServerTime - endTs) < 10) {
-                    statusText = escapeHtml(lastCall.MODE || 'Idle');
-                    statusClass = 'status-mode';
+                if (!lastCall.is_idle && (currentServerTime - endTs) < 60) {
+                    statusText = 'Listening';
+                    statusClass = 'status-listening';
                 } else {
                     statusText = 'Idle';
                     statusClass = 'status-idle';
@@ -663,9 +663,9 @@
                 const dur = parseFloat(durStr) || 0;
                 endTs = (lastCall.start_ts || 0) + dur;
                 const currentServerTime = (Date.now() / 1000) + serverOffset;
-                if (!lastCall.is_idle && (currentServerTime - endTs) < 10) {
-                    statusText = escapeHtml(lastCall.MODE || 'Idle');
-                    statusClass = 'status-mode';
+                if (!lastCall.is_idle && (currentServerTime - endTs) < 60) {
+                    statusText = 'Listening';
+                    statusClass = 'status-listening';
                 } else {
                     statusText = 'Idle';
                     statusClass = 'status-idle';
@@ -932,9 +932,10 @@
             document.querySelectorAll('.node-status-badge[data-end-ts]').forEach(el => {
                 const endTs = parseFloat(el.dataset.endTs);
                 if (!endTs || isNaN(endTs)) return;
-                if ((now - endTs) >= 10 && !el.classList.contains('status-idle')) {
+                // Timeout di sicurezza portato a 60s per lasciare tempo agli eventi MQTT SSE reali
+                if ((now - endTs) >= 60 && !el.classList.contains('status-idle')) {
                     el.textContent = 'Idle';
-                    el.classList.remove('status-mode', 'status-tx');
+                    el.classList.remove('status-mode', 'status-tx', 'status-listening');
                     el.classList.add('status-idle');
                 }
             });
@@ -1060,11 +1061,40 @@
             }
         }
 
-        setInterval(loadGatewayStatus, 3000);
-        setInterval(loadData, 1000);
+        // Gestione Real-Time tramite SSE
+        function initRealTime() {
+            console.log("Inizializzazione SSE...");
+            const evtSource = new EventSource("/events");
+
+            evtSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'call_update') {
+                        // Aggiorna immediatamente la dashboard
+                        loadData();
+                    } else if (data.type === 'gateway_update') {
+                        loadGatewayStatus();
+                    } else if (data.type === 'system') {
+                        console.log("SSE System:", data.msg);
+                    }
+                } catch (e) {
+                    console.error("Errore parsing evento SSE:", e);
+                }
+            };
+
+            evtSource.onerror = function(err) {
+                console.error("Errore SSE, riconnessione automatica del browser...", err);
+            };
+        }
+
+        // Fallback polling (meno frequente con SSE attivo)
+        setInterval(loadGatewayStatus, 15000);
+        setInterval(loadData, 10000);
         setInterval(updateLiveTimers, 1000);
+        
         loadData();
         loadGatewayStatus();
+        initRealTime();
     </script>
 
 </body>

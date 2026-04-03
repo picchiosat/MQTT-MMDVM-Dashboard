@@ -121,6 +121,18 @@ calls_lock = threading.Lock()
 gateway_status = {}  # {node_name: {type, action, reason, talkgroup, repeater, timestamp}}
 gateway_lock = threading.Lock()
 user_map, nxdn_map, callsign_map, tg_map = {}, {}, {}, {}
+# SSE Event support
+event_subscribers = []
+event_lock = threading.Lock()
+
+def notify_event(event_type, data):
+    with event_lock:
+        event_data = {"type": event_type, "timestamp": time.time(), "payload": data}
+        for q in event_subscribers[:]: # Use slice to avoid issues if list modified
+            try:
+                q.put_nowait(event_data)
+            except:
+                pass # Queue full or other issue
 
 def format_ber(val):
     if val is None or val == "": return "0%"
@@ -276,6 +288,9 @@ def save_or_update_call(call_data):
                             call_data.get("SOURCE_EXT", ""), call_data.get("LAT"), call_data.get("LON"),
                             call_data.get("SOURCE_TYPE", "MMDVM"), call_data.get("is_idle", 0)))
         conn.commit()
+    
+    # Notifica evento real-time a tutti gli iscritti
+    notify_event("call_update", call_data)
 
 def get_recent_calls(limit=40):
     conn = sqlite3.connect(DB_PATH)
@@ -326,6 +341,7 @@ def handle_link_status_message(topic, data, mode, now_ts):
             "talkgroup": str(link_tg) if link_tg else "", "repeater": link_repeater,
             "timestamp": link_timestamp, "updated": now_ts
         }
+        notify_event("gateway_update", gateway_status[node_name])
 
 def handle_call_start(topic, data, mode, slot, now_ts):
     topic_parts = topic.split('/')
@@ -334,33 +350,37 @@ def handle_call_start(topic, data, mode, slot, now_ts):
     src_id_raw = str(data.get("source_id") or data.get("src_id") or data.get("radio_id") or "")
     src_call_raw = data.get("source_cs") or data.get("src_callsign") or data.get("callsign") or ""
     
-    uid = src_call_raw if (mode.upper() in ["YSF", "D-STAR"] or not src_id_raw) else src_id_raw
+    # Normalizzazione MODE
+    radio_mode = mode.upper()
+    if radio_mode == "MMDVM":
+        radio_mode = (data.get("mode") or "DMR").upper()
+
+    uid = src_call_raw if (radio_mode in ["YSF", "D-STAR"] or not src_id_raw) else src_id_raw
     
     src_from = (data.get("source") or data.get("from") or "NET").upper()
     with calls_lock:
         # Deduplicazione relax: evita solo duplicati esatti (stesso utente, stesso nodo, stesso slot e stessa origine)
-        # Questo permette di vedere lo stesso utente attivo su più nodi o via sia RF che NETWORK.
         if any(c["id_raw"] == uid and c["TIME"] == "" and 
                c["NODO"] == node_name and c["SLOT"] == slot and 
                c["FROM"] == src_from and (now_ts - c["start_ts"]) < 2 
                for c in calls):
             return
-
+    
     callsign = src_call_raw.upper().strip()
-    name, city, country = f"{mode} User", "", ""
+    name, city, country = f"{radio_mode} User", "", ""
     lookup_call = callsign
     for sfx in ["-RPT", "-G", "-L"]:
         if lookup_call.endswith(sfx):
             lookup_call = lookup_call[:-len(sfx)]; break
     
-    if mode.upper() in ["YSF", "D-STAR"]:
+    if radio_mode in ["YSF", "D-STAR"]:
         db_res = get_callsign_info(lookup_call)
         if db_res[0]: name, city, country = db_res
         elif src_id_raw:
-            callsign_db, name_db, city_db, country_db = get_user_info(src_id_raw, mode)
+            callsign_db, name_db, city_db, country_db = get_user_info(src_id_raw, radio_mode)
             if callsign_db != src_id_raw: callsign, name, city, country = callsign_db, name_db, city_db, country_db
     else:
-        callsign, name, city, country = get_user_info(src_id_raw, mode)
+        callsign, name, city, country = get_user_info(src_id_raw, radio_mode)
 
     tg_id = str(data.get("reflector") or data.get("destination_id") or data.get("dg-id") or 
                 data.get("destination_cs") or data.get("tg") or data.get("talkgroup") or "N/A").strip()
@@ -371,7 +391,7 @@ def handle_call_start(topic, data, mode, slot, now_ts):
     new_call = {
         "FROM": src_from,
         "id_raw": uid, "ID": callsign, "NAME": name, "CITY": city, "COUNTRY": country,
-        "TG": target, "MODE": mode, "SLOT": slot, "NODO": node_name, 
+        "TG": target, "MODE": radio_mode, "SLOT": slot, "NODO": node_name, 
         "BER": format_ber(data.get("ber") or data.get("BER")), "DATA": time.strftime("%d-%m-%Y"),
         "ORARIO": time.strftime("%H:%M:%S"), "TIME": "", "start_ts": now_ts,
         "SOURCE_EXT": source_ext, "LAT": data.get("lat") or data.get("latitude"),
@@ -398,24 +418,30 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
     with calls_lock:
         found_any = False
         for c in reversed(calls):
+            # Normalizziamo per confronti sicuri (case-insensitive)
+            pkt_mode_val = str(data.get("mode") or "").upper().replace("DSTAR", "D-STAR")
+            pkt_action_val = str(action or "").lower()
+            
             # Se è un pacchetto 'idle', chiudiamo tutto su quello slot.
-            # Permettiamo il match anche se TIME è già impostato (es. arrivato un 'end' poco prima)
-            is_idle_pkt = (data.get("mode") == "idle" and (action is None or action == "idle"))
+            is_idle_pkt = (pkt_mode_val == "IDLE" and (action is None or pkt_action_val == "idle"))
             
             # Per i pacchetti 'end/lost/etc' serve che la chiamata sia ancora attiva (TIME == "")
-            # Per i pacchetti 'idle' vogliamo marcare l'ultima chiamata come idle anche se è appena finita
             is_active_match = (c["TIME"] == "" or is_idle_pkt)
             match_from = (pkt_source is None or c["FROM"] == pkt_source or is_idle_pkt)
             
-            if c["MODE"] == mode and is_active_match and c["NODO"] == node_name and \
+            # MMDVM-Host manda pacchetti con top-key 'mmdvm' e radio mode dentro data['mode']
+            is_mmdvm_idle = (mode == "MMDVM" and pkt_mode_val == "IDLE")
+            radio_mode_match = (c["MODE"] == mode or (mode == "MMDVM" and c["MODE"] == pkt_mode_val) or is_mmdvm_idle)
+            
+            if radio_mode_match and is_active_match and c["NODO"] == node_name and \
                c["SOURCE_TYPE"] == source_type and match_from and \
-               (mode != "DMR" or c["SLOT"] == slot):
+               (is_mmdvm_idle or c["MODE"] != "DMR" or c["SLOT"] == slot):
                 
                 if is_idle_pkt:
-                    if c["TIME"] != "":
-                        c["is_idle"] = 1
-                    else:
+                    c["is_idle"] = 1
+                    if c["TIME"] == "":
                         c["TIME"] = round(now_ts - c["start_ts"], 1)
+                    
                     save_or_update_call(c)
                     found_any = True
                     # Continuiamo per chiudere eventuali altri flussi rimasti appesi sullo stesso slot
@@ -427,7 +453,9 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
                         val_dur = round(float(json_dur), 1) if json_dur is not None else round(now_ts - c["start_ts"], 1)
                     except:
                         val_dur = round(now_ts - c["start_ts"], 1)
+                    
                     c["TIME"] = f"{val_dur}!" if action == "lost" else val_dur
+                    c["is_idle"] = 0 # FORZA Listening
                     
                     ber_val = data.get("ber") or data.get("BER")
                     if ber_val is not None:
@@ -437,19 +465,45 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
                     found_any = True
                     break
 
+def handle_call_text_update(topic, data, now_ts):
+    topic_parts = topic.split('/')
+    node_name = topic_parts[1] if len(topic_parts) >= 2 else "N/A"
+    slot = str(data.get("slot", "-"))
+    val = data.get("value", "")
+    if not val: return
+
+    # Analizza 'value' per estrarre Nominativo e Nome (es. 'IZ1RFM Carlo')
+    parts = val.split(' ', 1)
+    callsign = parts[0].upper()
+    name = parts[1] if len(parts) > 1 else ""
+
+    with calls_lock:
+        for c in reversed(calls):
+            if c["NODO"] == node_name and (slot == "-" or c["SLOT"] == slot) and c["TIME"] == "":
+                c["ID"] = callsign
+                if name: c["NAME"] = name
+                save_or_update_call(c)
+                break
+
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
-        mode = list(payload.keys())[0]
-        data = payload[mode]
+        if not isinstance(payload, dict) or not payload: return
+        
+        raw_mode = list(payload.keys())[0]
+        mode = raw_mode.upper().replace("DSTAR", "D-STAR")
+        data = payload[raw_mode]
         action = data.get("action")
         slot = data.get("slot", "-")
         now_ts = time.time()
 
-        if mode in ["link", "status"]:
+        if mode in ["LINK", "STATUS"]:
             handle_link_status_message(msg.topic, data, mode, now_ts)
         elif action == "start":
             handle_call_start(msg.topic, data, mode, slot, now_ts)
+        elif mode == "TEXT":
+            # Aggiorna informazioni testuali della chiamata in corso
+            handle_call_text_update(msg.topic, data, now_ts)
         else:
             handle_call_end_or_update(msg.topic, mode, slot, data, now_ts, action)
     except Exception as e:
