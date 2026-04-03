@@ -418,30 +418,30 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
     with calls_lock:
         found_any = False
         for c in reversed(calls):
+            # Normalizziamo per confronti sicuri (case-insensitive)
+            pkt_mode_val = str(data.get("mode") or "").upper().replace("DSTAR", "D-STAR")
+            pkt_action_val = str(action or "").lower()
+            
             # Se è un pacchetto 'idle', chiudiamo tutto su quello slot.
-            # Permettiamo il match anche se TIME è già impostato (es. arrivato un 'end' poco prima)
-            is_idle_pkt = (data.get("mode") == "idle" and (action is None or action == "idle"))
+            is_idle_pkt = (pkt_mode_val == "IDLE" and (action is None or pkt_action_val == "idle"))
             
             # Per i pacchetti 'end/lost/etc' serve che la chiamata sia ancora attiva (TIME == "")
-            # Per i pacchetti 'idle' vogliamo marcare l'ultima chiamata come idle anche se è appena finita
             is_active_match = (c["TIME"] == "" or is_idle_pkt)
             match_from = (pkt_source is None or c["FROM"] == pkt_source or is_idle_pkt)
             
             # MMDVM-Host manda pacchetti con top-key 'mmdvm' e radio mode dentro data['mode']
-            # Se è un pacchetto 'idle' generico del nodo, facciamo match con qualsiasi chiamata attiva per chiuderla.
-            is_mmdvm_idle = (mode == "MMDVM" and data.get("mode") == "idle")
-            
-            radio_mode_match = (c["MODE"] == mode or (mode == "MMDVM" and c["MODE"] == (data.get("mode") or "DMR").upper()) or is_mmdvm_idle)
+            is_mmdvm_idle = (mode == "MMDVM" and pkt_mode_val == "IDLE")
+            radio_mode_match = (c["MODE"] == mode or (mode == "MMDVM" and c["MODE"] == pkt_mode_val) or is_mmdvm_idle)
             
             if radio_mode_match and is_active_match and c["NODO"] == node_name and \
                c["SOURCE_TYPE"] == source_type and match_from and \
                (is_mmdvm_idle or c["MODE"] != "DMR" or c["SLOT"] == slot):
                 
                 if is_idle_pkt:
-                    if c["TIME"] != "":
-                        c["is_idle"] = 1
-                    else:
+                    c["is_idle"] = 1
+                    if c["TIME"] == "":
                         c["TIME"] = round(now_ts - c["start_ts"], 1)
+                    
                     save_or_update_call(c)
                     found_any = True
                     # Continuiamo per chiudere eventuali altri flussi rimasti appesi sullo stesso slot
@@ -453,7 +453,9 @@ def handle_call_end_or_update(topic, mode, slot, data, now_ts, action):
                         val_dur = round(float(json_dur), 1) if json_dur is not None else round(now_ts - c["start_ts"], 1)
                     except:
                         val_dur = round(now_ts - c["start_ts"], 1)
+                    
                     c["TIME"] = f"{val_dur}!" if action == "lost" else val_dur
+                    c["is_idle"] = 0 # FORZA Listening
                     
                     ber_val = data.get("ber") or data.get("BER")
                     if ber_val is not None:
@@ -486,17 +488,20 @@ def handle_call_text_update(topic, data, now_ts):
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
-        mode = list(payload.keys())[0]
-        data = payload[mode]
+        if not isinstance(payload, dict) or not payload: return
+        
+        raw_mode = list(payload.keys())[0]
+        mode = raw_mode.upper().replace("DSTAR", "D-STAR")
+        data = payload[raw_mode]
         action = data.get("action")
         slot = data.get("slot", "-")
         now_ts = time.time()
 
-        if mode in ["link", "status"]:
+        if mode in ["LINK", "STATUS"]:
             handle_link_status_message(msg.topic, data, mode, now_ts)
         elif action == "start":
             handle_call_start(msg.topic, data, mode, slot, now_ts)
-        elif mode == "Text":
+        elif mode == "TEXT":
             # Aggiorna informazioni testuali della chiamata in corso
             handle_call_text_update(msg.topic, data, now_ts)
         else:
