@@ -66,8 +66,8 @@
                 <select id="tg-filter">
                     <option value="all">TG: ALL</option>
                 </select>
-                <select id="name-filter">
-                    <option value="all">NAME: ALL</option>
+                <select id="id-filter">
+                    <option value="all">ID: ALL</option>
                 </select>
             </div>
         </div>
@@ -211,7 +211,7 @@
         let currentMode = "all";
         let currentNode = "all";
         let currentTG = "all";
-        let currentName = "all";
+        let currentId = "all";
         let currentCountry = "all";
         let modeChart, tgChart, map, markersLayer;
         let lastMapCallId = null;
@@ -460,8 +460,8 @@
             currentTG = e.target.value;
             loadData();
         });
-        document.getElementById('name-filter').addEventListener('change', (e) => {
-            currentName = e.target.value;
+        document.getElementById('id-filter').addEventListener('change', (e) => {
+            currentId = e.target.value;
             loadData();
         });
 
@@ -521,10 +521,10 @@
 
                     document.getElementById('node-filter').value = "all";
                     document.getElementById('tg-filter').value = "all";
-                    document.getElementById('name-filter').value = "all";
+                    document.getElementById('id-filter').value = "all";
                     currentNode = "all";
                     currentTG = "all";
-                    currentName = "all";
+                    currentId = "all";
 
                     loadData();
                 }
@@ -780,26 +780,26 @@
                 }
 
                 // Crea uno snapshot per confronto (dati + filtri attivi)
-                const dataSnapshot = JSON.stringify(data) + `|${currentMode}|${currentNode}|${currentTG}|${currentName}`;
+                const dataSnapshot = JSON.stringify(data) + `|${currentMode}|${currentNode}|${currentTG}|${currentId}`;
                 const dataChanged = dataSnapshot !== lastDataSnapshot;
                 lastDataSnapshot = dataSnapshot;
 
                 // Estrai valori unici per le dropdown
                 const nodes = new Set();
                 const tgs = new Set();
-                const names = new Set();
+                const ids = new Set();
                 const countries = new Set();
 
                 data.forEach(call => {
                     if (call.NODO) nodes.add(call.NODO.toUpperCase());
                     if (call.TG) tgs.add(call.TG);
-                    if (call.NAME) names.add(call.NAME);
+                    if (call.ID) ids.add(call.ID);
                     if (call.COUNTRY) countries.add(call.COUNTRY);
                 });
 
                 updateDropdown('node-filter', nodes, currentNode, 'NODE');
                 updateDropdown('tg-filter', tgs, currentTG, 'TG');
-                updateDropdown('name-filter', names, currentName, 'NAME');
+                updateDropdown('id-filter', ids, currentId, 'ID');
                 updateDropdown('country-filter', countries, currentCountry, 'COUNTRY');
 
                 // Aggiorna DOM solo se i dati sono cambiati
@@ -813,8 +813,8 @@
                     data.forEach(call => {
                         const modeMatch = currentMode === "all" || (call.MODE && call.MODE.toLowerCase() === currentMode);
                         const tgMatch = currentTG === "all" || call.TG === currentTG;
-                        const nameMatch = currentName === "all" || call.NAME === currentName;
-                        if (!modeMatch || !tgMatch || !nameMatch) return;
+                        const idMatch = currentId === "all" || call.ID === currentId;
+                        if (!modeMatch || !tgMatch || !idMatch) return;
 
                         const nodeName = (call.NODO || "N/A").toUpperCase();
                         if (!nodesByNode.has(nodeName)) {
@@ -862,9 +862,9 @@
                         const modeMatch = currentMode === "all" || (call.MODE && call.MODE.toLowerCase() === currentMode);
                         const nodeMatch = currentNode === "all" || (call.NODO && call.NODO.toUpperCase() === currentNode);
                         const tgMatch = currentTG === "all" || call.TG === currentTG;
-                        const nameMatch = currentName === "all" || call.NAME === currentName;
+                        const idMatch = currentId === "all" || call.ID === currentId;
 
-                        if (modeMatch && nodeMatch && tgMatch && nameMatch) {
+                        if (modeMatch && nodeMatch && tgMatch && idMatch) {
                             tableHtml += buildRowHtml(call, lastServerOffset);
                         }
                     });
